@@ -1,0 +1,71 @@
+Introduction
+Read a GUID over the phone
+
+Act I
+
+GUIDs have desirable properties for software internals.
+128 bits in 8-4-4-4-12 hex format
+ex. 17fcd7f7-2074-449d-8146-a3ed94ba88e3 (36 bytes)
+
+
+Act II
+
+TinyURLs (Often with an incorrect assumption that "tiny" matches human factors.)
+See also: base64
+ex. 8QWNQs0RgUeBBfL/fAnEDA== (24 bytes, 2 of which are padding)
+
+
+Act III
+
+Simplistic mapping from 2^16 dictionary "words" to every 16 bits of data
+Issue: fragile under censorship or change.
+What if word #26346 turns out to be a curse word in Hindi? Or word #152 is trademarked?
+And still kind of awkward...
+ex. correct-battery-horse-staple-arent-hardcoded-dictionaries-fun (~ 60 bytes)
+
+
+Act IV
+Don't hardcode. Use math. Simple, dumb, fast algo (like CRC32) and take the bottom n bits
+Suddenly, this is no longer a one-time hack. It becomes a system, with multiple possible impl
+Replace any term you don't like. Just do the math.
+By convention, limit 'words' to [a-z] only
+Initial guess: 16-bit chunks?
+
+
+Act V
+Second guess. 24-bit blocks?
+Coupon collector problem becomes serious at bigger sizes. Need roughly n log n candidates
+Generated about 200 billion word-like strings with prefix/suffix multiplication, and hash away
+Results: ~700 candidates per 24-bit hash, giving pick-of-the-litter
+Try 32-bit? (Very long 'words' on average) Exponential cost with incremental benefits
+
+
+Act VI
+What really is a human-readable string?
+Bigram complexity scoring. (Weakness: 'known' words, e.g. filosofy vs philosophy
+(Show preliminary results)
+
+
+Act ???
+More words. How language-agnostic should it remain? (or _can_ it remain?)
+Can we limit the longest word size to be smaller than a reasonable bound (maybe 16)?
+Can we improve readability overall?
+Can we avoid excessive English-orientation?
+SDK
+
+
+EXAMPLES. Lowercase signfies a 24-bit identifier. Numeric or uppercase
+represents an 8-bit filler values.
+
+GUID -> 6 chunks + FF (8 hex bits)
+
+127.0.0.1  (that's 7F0000, then 1) dischoika.1
+
+Latitude/Longitude (12 bits each) -> nearest 0.088 degrees lat/lon
+Accurate to within a few feet anywhere on earth with a word pair
+
+160 bit etherium address -> 7 chunks
+
+
+
+

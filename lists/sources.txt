@@ -1,0 +1,14 @@
+https://github.com/dwyl/english-words/blob/master/words_alpha.zip
+https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10-million-password-list-top-1000000.txt
+https://www.keithv.com/software/wlist/wlist_match1.zip
+https://github.com/words/an-array-of-spanish-words/blob/master/corpus.txt
+https://github.com/words/an-array-of-french-words/blob/master/corpus.txt
+https://github.com/words/an-array-of-english-words/blob/master/*
+https://github.com/creativecouple/all-the-german-words/tree/master/corpus/*
+
+Syllables
+https://www.yourlocalunitedway.org/sites/main/files/3-common_syllables_packet.pdf
+http://www.fldoe.org/core/fileparse.php/7539/urlt/manual.pdf
+
+
+
