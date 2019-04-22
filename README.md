@@ -1,11 +1,13 @@
 # humID
-Human-friendly GUIDs and other identifiers
+
+Human-friendly GUIDs and other identifiers:
+
 Suppose you had to read an arbitrary IPv6 address over the phone. How difficult would that be?
 
 How about a 160 bit Ethereum address?
 
-Or suppose your webapp uses GUIDs internally, but the end up getting exposed in a URL.
-How could you ensure 'human readable' URLs out of identifiers?
+Or suppose your webapp uses GUIDs internally, but they end up exposed in a URL.
+How could you ensure 'human readable' URLs?
 
 That's where this project comes in.
 

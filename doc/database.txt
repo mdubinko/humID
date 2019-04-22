@@ -1,0 +1,2 @@
+CREATE TABLE words (word VARCHAR(20), crc32 INT UNSIGNED, complexity FLOAT, dict CHAR(2), yuck CHAR(1));
+

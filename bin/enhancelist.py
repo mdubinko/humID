@@ -5,6 +5,9 @@ suffixes = ['acy', 'age', 'al', 'ance', 'ence', 'dom', 'ee', 'er', 'ful' 'hood',
 si_prefixes = ['yotta', 'zetta', 'exa', 'peta', 'tera', 'giga', 'mega', 'kilo', 'hecto', 'deca', 'deci', 'centi', 'milli', 'micro', 'nano', 'pico', 'femto', 'atto', 'zepto', 'yocto']
 prefixes.extend(si_prefixes)
 
+fake_si_prefixes = ['hepa', 'ento', 'otta', 'fito', 'nea', 'syto', 'dea', 'tredo', 'una', 'revo', 'harpo', 'groucho', 'gummo', 'zeppo', 'chico']
+prefixes.extend((fake_si_prefixes))
+
 badwords = set()
 badfrags = []
 
