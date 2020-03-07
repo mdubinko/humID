@@ -1,22 +1,22 @@
 # humID
 
-Human-friendly GUIDs and other identifiers:
+Humane GUIDs and other identifiers:
 
 Suppose you had to read an arbitrary IPv6 address over the phone. How difficult would that be?
 
-How about a 160 bit Ethereum address?
+How about a 160 bit Ethereum address? Or a good old-fashioned GUID?
 
-Or suppose your webapp uses GUIDs internally, but they end up exposed in a URL.
-How could you ensure 'human readable' URLs?
+Suppose your webapp uses GUIDs internally, but they end up exposed in a URL.
+You could blast out the usual GUID syntax, with seemingly randomly-placed dashes. Or you could spit out 22 charcters of base64 line noise.
 
-That's where this project comes in.
+Or you could do better. That's where this project comes in.
 
 My initial thought was to assemble a list of 256 short, easily-pronounceable words, assigning one to each number 0-255.
 Then you could replace each byte in an identifier with a word. Say 192.168.10.20 to spam.eggs.foo.bar.
 But that doesn't get you much. Why not a dictionary of 65536 words? Then we can map two bytes to each word.
+In this era of big data, why not go full 32-bit?
 
-
-And 'words' don't necessarily have to appear in the dictionary--just be pronounceable. So perhaps we can get up to 24 bits of information in a 'dictionary' of 16 million words.
+And 'words' don't necessarily have to appear in the dictionary--just be more-or-less pronounceable.
 
 So far so good, but if the project depends on a single global dictionary, there's bound to be problems.
 1) There's always the possibility of an inappropriate word appearing in the lookup table. Maybe not even a classic
@@ -31,59 +31,38 @@ Deutchland might disagree. I wouldn't even know how to evaluate "pronouncable" w
 
 So we can't rely on a global lookup table.
 
-Instead, it uses a deliberately-simple hash function. *Any* sequence of UTF-8 bytes can be hashed down to 24 bits.
-To make it useful, I can provide a default lookup table (by feeding *lots* of words into the hash and keeping
-a reverse lookup table, then weeding it down to the most pronounceable entry for each of the 16 million keys.)
+Instead, it uses a deliberately-simple hash function. *Any* sequence of UTF-8 bytes can be hashed down to 32 bits. There's even a well-known CRC32 algorithm (as used in ZIP files) with implementations in Python in many other languages.
 
-TODO: this paragraph is 16-bit-specific. Rework. So suppose an existing identifier included "superhero" (representing binary data 0x388D) but for one of the reasons
-given above, that word had to be removed. An equivalent is "sublimely" representing the same bits.
-Completely interchangable. All an implementation needs to translate words to data is to implement the hash function.
+Let's do this. For every integer in the 32-bit space, let's find a conveniently short 'word'.
 
-The hash function is CRC32 (as used in the ZIP format), discarding from the final answer all but the lowest 24 bits.
-This is well known, well-supported, and simple to implement. Most programming langauges already have it in a library.
+Translating from word -> int is simply running CRC32. Translating from int -> word is trickier. We need a huge lookup table.
 
-Python implementation
-
-import binascii
+In this initial implementation, words use only [a-z]. Identifiers longer than 32 bits can string together multiple words with spaces or other separator characters.
 
 def word_hash(s):
     crc = binascii.crc32(bytes(s, 'utf-8'))
     return crc & 0xffffff
 
-
-= The Default Dictionary =
-
-The default dictionary has the following characteristics:
-1) It uses only the characters [a-z]. No digits, capital letters, whitespace, or punctuation.
-2) It's based on /usr/share/dict/words plus some randomly-generated pseudowords and word-like prefixes and suffixes.
-3) A bit of manual tweaking to make it better and more readable
-
 If you want to make your own dictionary, go for it. It could use CJK langauges, or emoji, or nothing but offensive
-words. Knock yourself out.
+words. Knock yourself out. Just maybe this would be the basis for a decent password generator.
 
-= Specific Use Cases =
+TODO: Examples
 
-Since the default dictionary avoids punctuation, it makes possible some common cases.
-
-TODO: IPv4 address: You can use a dot to separate two words, each of which represents two octets.
-192.168.0.1 -> udusk.gymnasium
-1.1.1.1 -> aft.aft
-Google 172.217.6.78 -> reversication.oast
-
-TODO: GUID: You can use - to separate eight words, for a total of 128 bits.
-(hang on, let me generate a fresh GUID)
-799f b281 9792 4eaf a483 de8d cfc7 bf6b -> trouca-coastwise-udens-howl-quino-ymq-complacent-kovil
+IPv4 address:
+  * 127.0.0.1 ->
+  
+GUID:
+  (hang on, let me generate a fresh GUID)
+  * 799f b281 9792 4eaf a483 de8d cfc7 bf6b ->
 
 (hmm. This might be a good password generator too)
 
-TODO: IPv6 address: You can use : to separate eight words.
-As with numeric IPv6 addresses, you can use :: to replace long strings of 0s.
-Otherwise, it's almost the same as GUID representation.
+IPv6 address:
 
 Latitude/Longitude
 
-By mapping Latitude 0-360 -> 0-16 million and Latitude from +/- 90 -> 0-65535
-you can represent a small patch of the Earth's surface with two words with a precision better than a few meters
+By mapping Latitude 0-360 -> bottom 16-bits and Latitude from +/- 90 -> top 16-bits
+you can represent a small patch of the Earth's surface with a single short word -- with a precision better than a few meters
 
 
 
