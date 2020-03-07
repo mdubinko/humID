@@ -40,19 +40,6 @@ si_prefixes = """
     lotta nova novo hepa ento otta fito nea syto dea tredo una revo
 """.split()
 
-# including a blank word at the beginning!
-test_words = io.StringIO("""
-a
-b
-c
-d
-e
-ant
-bug
-cat
-dog
-elf
-""")
 
 bigrams = {}
 with open("lists/english_bigrams_1.txt") as f:
@@ -191,11 +178,13 @@ def pluralize(word):
         return word + "s"
 
 
-def process_line(line):
+def process_seed(line):
+    print(line)
     profile("A")
     global stats, out
-    seed = strip_accents(line[:-1])
-    seed = re.sub('\ |\?|\.|\!|/|\;|\:|-|\'', '', seed.lower())
+    seed = line
+    #seed = strip_accents(line[:-1])
+    #seed = re.sub('\ |\?|\.|\!|/|\;|\:|-|\'', '', seed.lower())
     if len(seed)>0 and not seed.isalpha():
         print(f"Rejected {seed}")
         stats.rejected += 1
@@ -271,11 +260,28 @@ def process_line(line):
     profile("final")
 
 
+seeds = []
+
 if is_test:
-    with test_words:
-        for line in test_words:
-            process_line(line)
+    seeds = io.StringIO("""
+a
+b
+c
+d
+e
+ant
+bug
+cat
+dog
+elf
+""").readlines()
+
 else:
-    with open(sys.argv[1]) as f:
-        for line in f:
-            process_line(line)
+    f = open(sys.argv[1], "r")
+    seeds = f.readlines()
+    f.close()
+
+print(len(seeds))
+
+for seed in [s.rstrip() for s in seeds]:
+    process_seed(seed)
