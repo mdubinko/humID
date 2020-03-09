@@ -39,9 +39,11 @@ Translating from word -> int is simply running CRC32. Translating from int -> wo
 
 In this initial implementation, words use only [a-z]. Identifiers longer than 32 bits can string together multiple words with spaces or other separator characters.
 
+```python
 def word_hash(s):
     crc = binascii.crc32(bytes(s, 'utf-8'))
     return crc & 0xffffff
+```
 
 If you want to make your own dictionary, go for it. It could use CJK langauges, or emoji, or nothing but offensive
 words. Knock yourself out. Just maybe this would be the basis for a decent password generator.

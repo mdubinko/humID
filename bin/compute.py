@@ -5,20 +5,20 @@ import re
 import io
 import os.path
 import re
+import time
 from datetime import datetime
 from types import SimpleNamespace
 from math import log
 
-
-import time
-start = time.time_ns()
-profile_active = True
-def profile(msg):
-    global start, profile_active
-    if profile_active:
-        print(f"{msg}: {(time.time_ns()-start) / 1000000} ms")
-    if msg=="final":
-        profile_active = False
+# stats accumulation
+stats = SimpleNamespace()
+stats.total_in = 0   # input seeds read
+stats.total_out = 0  # output words written
+stats.censored = 0   # on the naughty list
+stats.discarded = 0  # the resulting 'word' is too complicated to keep around
+stats.counter = 0    # write output every time this reaches 1k
+stats.cache_hit = 0  #
+stats.cache_miss = 0
 
 prefixes = """
     a al an ant anti at auto ba bad bi bin bio circum cis co contra de demi di dis double down
@@ -41,6 +41,25 @@ si_prefixes = """
 """.split()
 
 
+start = time.time_ns()
+profile_active = True
+def profile(msg):
+    global start, profile_active
+    if profile_active:
+        print(f"{msg}: {(time.time_ns()-start) / 1000000} ms")
+    if msg=="final":
+        profile_active = False
+
+
+def status(msg, src):
+    now = datetime.now()
+    out_str = f"{now:%Y%m%d %H:%M:%S}@{src}: {msg}"
+    f = open(f"db/{now:%Y%m%d}.log", "a")
+    f.write(out_str + '\n')
+    f.close()
+    print(out_str)
+
+
 bigrams = {}
 with open("lists/english_bigrams_1.txt") as f:
     for line in f:
@@ -51,15 +70,34 @@ with open("lists/english_bigrams_1.txt") as f:
         # print ("%s scores %f" % (bigram_ref, score))
 
 
+def bigram_score(bigram):
+    max_bigram_score = 20.0
+    return bigrams.get(bigram, max_bigram_score)
+
+
 def complexity_score(w):
     word_score = 0.0
-    max_bigram_score = 20.0
     length = len(w)
     for pos in range(1, length):
         bigram = w[pos - 1:pos + 1]
-        bigram_score = bigrams.get(bigram, max_bigram_score)
-        word_score += bigram_score
+        bg_score = bigram_score(bigram)
+        word_score += bg_score
     return word_score
+
+
+complexity_cache = {}
+
+
+def complexity_score_cached(w):
+    global complexity_cache, stats
+    if w in complexity_cache:
+        stats.cache_hit += 1
+        return complexity_cache[w]
+    else:
+        stats.cache_miss += 1
+        new_score = complexity_score(w)
+        complexity_cache[w] = new_score
+        return new_score
 
 
 def strip_accents(s):
@@ -135,20 +173,11 @@ bad_frags_trie = Trie()
 with open("lists/bad.words.txt") as badw:
     for line in badw:
         word = line[:-1]
-        if word[0] == '@':
-            bad_frags_trie.add(word[1:])
+        if word[0] != '@':
+            bad_frags_trie.add(word)
         else:
-            bad_words.add(word)
+            bad_words.add(word[1:])
 bad_frags_re = re.compile(bad_frags_trie.pattern())
-
-# stats accumulation
-stats = SimpleNamespace()
-stats.total_in = 0   # input seeds read
-stats.total_out = 0  # output words written
-stats.rejected = 0   # non-alpha (should never happen)
-stats.censored = 0   # on the naughty list
-stats.discarded = 0  # the resulting 'word' is too complicated to keep around
-stats.counter = 0    # write output every time this reaches 1k
 
 # 256 output files
 argc = len(sys.argv)
@@ -170,18 +199,16 @@ for folder in hexdigits:
     out.append(handles)
 
 
-def pluralize(word):
+def pluralize_suffix(word):
     last_letter = word[-1]
     if last_letter in "hsxz":
-        return word + "es"
+        return "es"
     else:
-        return word + "s"
+        return "s"
 
 
 def process_seed(line):
-    print(line)
-    profile("A")
-    global stats, out
+    global stats
     seed = line
     #seed = strip_accents(line[:-1])
     #seed = re.sub('\ |\?|\.|\!|/|\;|\:|-|\'', '', seed.lower())
@@ -189,75 +216,183 @@ def process_seed(line):
         print(f"Rejected {seed}")
         stats.rejected += 1
         return
-    words = [seed]
-    profile("B")
-    words.extend([seed + sfx for sfx in suffixes])
-    words.extend([pluralize(seed + sfx) for sfx in suffixes])
 
-    words.extend([pfx + seed for pfx in prefixes])
-    words.extend([pluralize(pfx + seed) for pfx in prefixes])
+    # bad seed?
+    if seed not in bad_words:  # and not bad_frags_re.search(seed):
+        seed_score = complexity_score(seed)
 
-    words.extend([pfx + seed + sfx for pfx in prefixes for sfx in suffixes])
-    words.extend([pluralize(pfx + seed + sfx) for pfx in prefixes for sfx in suffixes])
+        permutate(seed, seed_score, None, None, None)
+        permutate(seed, seed_score, si_prefixes, prefixes, suffixes)
 
-    words.extend([si + seed for si in si_prefixes])
-    words.extend([pluralize(si + seed) for si in si_prefixes])
+        # filter out exact matches from blacklist
+        #words2 = [word for word in words if word not in bad_words]
 
-    words.extend([si + seed + sfx for si in si_prefixes for sfx in suffixes])
-    words.extend([pluralize(si + seed + sfx) for si in si_prefixes for sfx in suffixes])
+        # filter out fragment matches from blacklist
+        #words3 = [word for word in words2 if not bad_frags_re.search(word)]
+        #stats.censored += (len(words) - len(words3))
 
-    words.extend([si + pfx + seed for si in si_prefixes for pfx in prefixes])
-    words.extend([pluralize(si + pfx + seed) for si in si_prefixes for pfx in prefixes])
-
-    words.extend([si + pfx + seed + sfx for si in si_prefixes for pfx in prefixes for sfx in suffixes])
-    words.extend([pluralize(si + pfx + seed + sfx) for si in si_prefixes for pfx in prefixes for sfx in suffixes])
-
-    # filter out exact matches from blacklist
-    profile("C")
-    words2 = [word for word in words if word not in bad_words]
-
-    # filter out fragment matches from blacklist
-    profile("D")
-    words3 = [word for word in words2 if not bad_frags_re.search(word)]
-    stats.censored += (len(words) - len(words3))
-
-    # censorship debugging:
-    #removed = list(set(words) - set(words3))
-    #import random
-    #if len(removed) > 0:
-    #    samp = random.choice(removed)
-    #    print(f"removed {samp} because {bad_frags_re.search(samp)}")
-
-    # finally, process each word from this seed
-    profile("E")
-    for w in words3:
-        # decide if this one is too complicated to keep
-        complexity = complexity_score(w)
-        if complexity >= 45:
-            stats.discarded += 1
-            continue
-
-        crc = binascii.crc32(w.encode("utf-8"))
-        top_4_bits = (crc & 0xf0000000) >> 28
-        nxt_4_bits = (crc & 0x0f000000) >> 24
-        out[top_4_bits][nxt_4_bits].write(f"{crc:08x} {complexity:02.0f} {w}\n")
-        #print(f"{crc:08x} {complexity:02.2f} {w}")
-        stats.total_out += 1
+        # censorship debugging:
+        #removed = list(set(words) - set(words3))
+        #import random
+        #if len(removed) > 0:
+        #    samp = random.choice(removed)
+        #    print(f"removed {samp} because {bad_frags_re.search(samp)}")
+    else:
+        stats.censored += 100000
+        status("blocked seed {seed}", outfile_prefix)
 
     # track stats
-    profile("F")
     stats.total_in += 1
     stats.counter += 1
     if stats.counter >= 100:
-        s = stats
-        n = datetime.now()
-        print(f"{n} in:{s.total_in:,} out:{s.total_out:,} 🚫:{s.rejected:,} 🤬:{s.censored:,} 🗑️:{s.discarded:,}")
-        stats.counter = 0
         # flush to disk
         for fld in out:
             for fp in fld:
                 fp.flush()
-    profile("final")
+        s = stats
+        o = outfile_prefix
+        status(f"in:{s.total_in:,} out:{s.total_out:,} 🤬:{s.censored:,} 🗑️:{s.discarded:,} cache:{s.cache_hit:,}/{s.cache_miss:,}", o)
+        # print(f"{n} in:{s.total_in:,} out:{s.total_out:,} 🤬:{s.censored:,} 🗑️:{s.discarded:,}")
+        stats.counter = 0
+
+
+def permutate(seed, seed_score, siprefixes, prefixes, suffixes):
+    """unrolled..."""
+    global stats
+    MAX_COMPLEXITY = 45
+
+    if seed == "":
+        return
+
+    def write_results(word, score):
+        if score >= MAX_COMPLEXITY:
+            stats.discarded += 1
+            # print(f"discarded {word} with score {score}")
+        else:
+            crc = binascii.crc32(word.encode("utf-8"))
+            top_4_bits = (crc & 0xf0000000) >> 28
+            nxt_4_bits = (crc & 0x0f000000) >> 24
+            out[top_4_bits][nxt_4_bits].write(f"{crc:08x} {score:02.0f} {word}\n")
+            # print(f"{crc:08x} {score:02.0f} {word}")
+            stats.total_out += 1
+
+    def write_results_plural(word, score):
+        """Pluralize without recomputing complexity"""
+        ps = pluralize_suffix(word)
+        if len(ps)==2:
+            write_results(word + ps, score + bigram_score(word[-1] + ps[0]) + complexity_score_cached(ps))
+        else: # 1
+            write_results(word + ps, score + bigram_score(word[-1] + ps[0]))
+
+    if siprefixes is None and prefixes is None and suffixes is None:
+        write_results(word, score)
+        write_results_plural(word, score)
+
+    if prefixes is not None:
+        for p in prefixes:
+            prefix_cplx = complexity_score_cached(p)
+            adj_cplx = bigram_score(p[-1] + seed[0])
+            complexity = prefix_cplx + adj_cplx + seed_score
+            word_out = p + seed
+            if 0 and bad_frags_re.search(word_out):
+                stats.censored += 1
+                print(f"removed {word_out} because {bad_frags_re.search(word_out)}")
+            else:
+                write_results(word_out, complexity)
+                write_results_plural(word_out, complexity)
+
+    if suffixes is not None:
+        for s in suffixes:
+            suffix_cplx = complexity_score_cached(s)
+            adj_cplx = bigram_score(seed[-1] + s[0])
+            complexity = seed_score + adj_cplx + suffix_cplx
+            word_out = seed + s
+            if 0 and bad_frags_re.search(word_out):
+                stats.censored += 1
+                print(f"removed {word_out} because {bad_frags_re.search(word_out)}")
+            else:
+                write_results(word_out, complexity)
+                write_results_plural(word_out, complexity)
+
+    if siprefixes is not None:
+        for sip in siprefixes:
+            sipfx_cplx = complexity_score_cached(sip)
+            adj_cplx = bigram_score(sip[-1] + seed[0])
+            complexity = sipfx_cplx + adj_cplx + seed_score
+            word_out = sip + seed
+            if 0 and bad_frags_re.search(word_out):
+                stats.censored += 1
+                print(f"removed {word_out} because {bad_frags_re.search(word_out)}")
+            else:
+                write_results(word_out, complexity)
+                write_results_plural(word_out, complexity)
+
+    if prefixes is not None and suffixes is not None:
+        for p in prefixes:
+            for s in suffixes:
+                prefix_cplx = complexity_score_cached(p)
+                suffix_cplx = complexity_score_cached(s)
+                adj_cplx1 = bigram_score(p[-1] + seed[0])
+                adj_cplx2 = bigram_score(seed[-1] + s[0])
+                complexity = prefix_cplx + adj_cplx1 + seed_score + adj_cplx2 + suffix_cplx
+                word_out = p + seed + s
+                if 0 and bad_frags_re.search(word_out):
+                    stats.censored += 1
+                    print(f"removed {word_out} because {bad_frags_re.search(word_out)}")
+                else:
+                    write_results(word_out, complexity)
+                    write_results_plural(word_out, complexity)
+
+    if siprefixes is not None and suffixes is not None:
+        for sip in siprefixes:
+            for s in suffixes:
+                sipfx_cplx = complexity_score_cached(sip)
+                suffix_cplx = complexity_score_cached(s)
+                adj_cplx1 = bigram_score(sip[-1] + seed[0])
+                adj_cplx2 = bigram_score(seed[-1] + sip[0])
+                complexity = sipfx_cplx + adj_cplx1 + seed_score + adj_cplx2 + suffix_cplx
+                word_out = sip + seed + s
+                if 0 and bad_frags_re.search(word_out):
+                    stats.censored += 1
+                    print(f"removed {word_out} because {bad_frags_re.search(word_out)}")
+                else:
+                    write_results(word_out, complexity)
+                    write_results_plural(word_out, complexity)
+
+    if siprefixes is not None and prefixes is not None:
+        for sip in siprefixes:
+            for p in prefixes:
+                sipfx_cplx = complexity_score_cached(sip)
+                prefix_cplx = complexity_score_cached(p)
+                adj_cplx1 = bigram_score(sip[-1] + p[0])
+                adj_cplx2 = bigram_score(p[-1] + seed[0])
+                complexity = sipfx_cplx + adj_cplx1 + prefix_cplx + adj_cplx2 + seed_score
+                word_out = sip + p + seed
+                if 0 and bad_frags_re.search(word_out):
+                    stats.censored += 1
+                    print(f"removed {word_out} because {bad_frags_re.search(word_out)}")
+                else:
+                    write_results(word_out, complexity)
+                    write_results_plural(word_out, complexity)
+
+    if siprefixes is not None and prefixes is not None and suffixes is not None:
+        for sip in siprefixes:
+            for p in prefixes:
+                for s in suffixes:
+                    sipfx_cplx = complexity_score_cached(sip)
+                    prefix_cplx = complexity_score_cached(p)
+                    suffix_cplx = complexity_score_cached(s)
+                    adj_cplx1 = bigram_score(sip[-1] + p[0])
+                    adj_cplx2 = bigram_score(p[-1] + seed[0])
+                    adj_cplx3 = bigram_score(seed[-1] + s[0])
+                    complexity = sipfx_cplx + adj_cplx1 + prefix_cplx + adj_cplx2 + seed_score + adj_cplx3 + suffix_cplx
+                    word_out = sip + p + seed + s
+                    if 0 and bad_frags_re.search(word_out):
+                        stats.censored += 1
+                        print(f"removed {word_out} because {bad_frags_re.search(word_out)}")
+                    else:
+                        write_results(word_out, complexity)
+                        write_results_plural(word_out, complexity)
 
 
 seeds = []
@@ -281,7 +416,7 @@ else:
     seeds = f.readlines()
     f.close()
 
-print(len(seeds))
-
 for seed in [s.rstrip() for s in seeds]:
     process_seed(seed)
+
+print(stats)
