@@ -46,25 +46,13 @@ Bigram complexity scoring. (Weakness: 'known' words, e.g. filosofy vs philosophy
 (Show preliminary results)
 
 
-Act ???
-More words. How language-agnostic should it remain? (or _can_ it remain?)
+Act VII
+All in for 32-bit. More words. How language-agnostic should it remain? (or _can_ it remain?)
 Can we limit the longest word size to be smaller than a reasonable bound (maybe 16)?
 Can we improve readability overall?
 Can we avoid excessive English-orientation?
-SDK
+SDK?
 
-
-EXAMPLES. Lowercase signfies a 24-bit identifier. Numeric or uppercase
-represents an 8-bit filler values.
-
-GUID -> 6 chunks + FF (8 hex bits)
-
-127.0.0.1  (that's 7F0000, then 1) dischoika.1
-
-Latitude/Longitude (12 bits each) -> nearest 0.088 degrees lat/lon
-Accurate to within a few feet anywhere on earth with a word pair
-
-160 bit etherium address -> 7 chunks
 
 
 

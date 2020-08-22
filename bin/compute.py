@@ -20,7 +20,7 @@ stats.counter = 0    # write output every time this reaches 1k
 stats.cache_hit = 0  #
 stats.cache_miss = 0
 
-prefixes = """
+prefixes = """ 
     a al an ant anti at auto ba bad bi bin bio circum cis co contra de demi di dis double down
     e en epi es et ex extra fin for geo he hydro hyper i iac il im in infra inter ir
     macro meta mid min mis mono multi neg neo non o omni or over out pen pent penta poly post pre pro
@@ -28,10 +28,26 @@ prefixes = """
     ultra un under uni ul up us zoo
 """.split()
 
+prefixes2 = """
+    ab ante ap apo auf aut auto ben bene but cata circ com con contro counter dec deca dia dif dys
+    ego eigen ein end endo equ equi eu ge hemi hetero hex hexa homeo homo hypo intra intro iso mini mit myo
+    necro next ob oct octo omega pan per peri por port porta prop sept sym syn trans up xy zu zy
+""".split()
+
+prefixes.extend(prefixes2)
+
 suffixes = """
     acy age al ance ence dom ee er fu ful hood ing ish ism ist ive
     less ly ment ness or ora ous ously ry ship ward wise y
 """.split()
+
+suffixes2 = """
+    able ably ane aine ase at ate ated cide cline ed ede edly eer eering ein en ene ened est estly
+    fy ible ic ide idem iest ify ion ite ity ize izer lex lexi man mance mancer mancy mat
+    note noted ode ol ole org ose sum summed son ty ulate up ur xy yne
+""".split()
+
+suffixes.extend(suffixes2)
 
 # including several fake prefixes
 si_prefixes = """
@@ -54,7 +70,7 @@ def profile(msg):
 def status(msg, src):
     now = datetime.now()
     out_str = f"{now:%Y%m%d %H:%M:%S}@{src}: {msg}"
-    f = open(f"db/{now:%Y%m%d}.log", "a")
+    f = open(f"work/{now:%Y%m%d}.log", "a")
     f.write(out_str + '\n')
     f.close()
     print(out_str)
@@ -190,14 +206,6 @@ if not argc == 2:
 else:
     outfile_prefix = os.path.basename(sys.argv[1]).split(".")[0]
 
-hexdigits = "0123456789abcdef"
-out = []
-for folder in hexdigits:
-    handles = []
-    for suffix in hexdigits:
-        handles.append(open(f"db/{folder}/{outfile_prefix}_{suffix}.txt", "w"))
-    out.append(handles)
-
 
 def pluralize_suffix(word):
     last_letter = word[-1]
@@ -207,12 +215,31 @@ def pluralize_suffix(word):
         return "s"
 
 
+cached_string_lists = {}
+csl_hits = 0
+csl_misses = 0
+
+
+def strings_scoring_less_than(n, list):
+    global cached_string_lists, csl_hits, csl_misses
+    list_key = list[0]
+    cache_key = list_key + ":" + str(n)
+    if cache_key in cached_string_lists:
+        csl_hits += 1
+        return cached_string_lists[cache_key]
+    else:
+        result = [item for item in list if complexity_score_cached(item) < n]
+        cached_string_lists[cache_key] = result
+        csl_misses += 1
+        return result
+
+
 def process_seed(line):
     global stats
     seed = line
     #seed = strip_accents(line[:-1])
     #seed = re.sub('\ |\?|\.|\!|/|\;|\:|-|\'', '', seed.lower())
-    if len(seed)>0 and not seed.isalpha():
+    if len(seed) > 0 and not seed.isalpha():
         print(f"Rejected {seed}")
         stats.rejected += 1
         return
@@ -221,8 +248,12 @@ def process_seed(line):
     if seed not in bad_words:  # and not bad_frags_re.search(seed):
         seed_score = complexity_score(seed)
 
-        permutate(seed, seed_score, None, None, None)
-        permutate(seed, seed_score, si_prefixes, prefixes, suffixes)
+        if seed_score < 37:
+            permutate(seed, seed_score, None, None, None)
+            permutate(seed, seed_score,
+                      strings_scoring_less_than(37 - seed_score, si_prefixes),
+                      strings_scoring_less_than(37 - seed_score, prefixes),
+                      strings_scoring_less_than(37 - seed_score, suffixes))
 
         # filter out exact matches from blacklist
         #words2 = [word for word in words if word not in bad_words]
@@ -239,26 +270,37 @@ def process_seed(line):
         #    print(f"removed {samp} because {bad_frags_re.search(samp)}")
     else:
         stats.censored += 100000
-        status("blocked seed {seed}", outfile_prefix)
+        status(f"blocked seed {seed}", outfile_prefix)
 
     # track stats
     stats.total_in += 1
     stats.counter += 1
     if stats.counter >= 100:
         # flush to disk
-        for fld in out:
-            for fp in fld:
-                fp.flush()
+        for idx in range(256):
+            folder = hexdigits[(idx & 0xf0) >> 4]
+            suffix = hexdigits[idx & 0x0f]
+
+            target_file = open(f"work/{folder}/{outfile_prefix}_{suffix}.txt", "a")
+            target_file.writelines(buffers[idx])
+            buffers[idx] = []
+            target_file.close()
+
         s = stats
         o = outfile_prefix
-        status(f"in:{s.total_in:,} out:{s.total_out:,} 🤬:{s.censored:,} 🗑️:{s.discarded:,} cache:{s.cache_hit:,}/{s.cache_miss:,}", o)
-        # print(f"{n} in:{s.total_in:,} out:{s.total_out:,} 🤬:{s.censored:,} 🗑️:{s.discarded:,}")
+        status(f"in:{s.total_in:,} out:{s.total_out:,} 🤬:{s.censored:,} 🗑️:{s.discarded:,} cache:{s.cache_hit:,} seed:{seed}", o)
         stats.counter = 0
+
+
+hexdigits = "0123456789abcdef"
+
+# For each of the 256 output files, maintain an array of strings to be joined at write-time
+buffers = [[] for n in range(256)]
 
 
 def permutate(seed, seed_score, siprefixes, prefixes, suffixes):
     """unrolled..."""
-    global stats
+    global stats, buffers
     MAX_COMPLEXITY = 45
 
     if seed == "":
@@ -272,7 +314,8 @@ def permutate(seed, seed_score, siprefixes, prefixes, suffixes):
             crc = binascii.crc32(word.encode("utf-8"))
             top_4_bits = (crc & 0xf0000000) >> 28
             nxt_4_bits = (crc & 0x0f000000) >> 24
-            out[top_4_bits][nxt_4_bits].write(f"{crc:08x} {score:02.0f} {word}\n")
+            #out[top_4_bits][nxt_4_bits].write(f"{crc:08x} {score:02.0f} {word}\n")
+            buffers[16 * top_4_bits + nxt_4_bits].append(f"{crc:08x} {score:02.0f} {word}\n")
             # print(f"{crc:08x} {score:02.0f} {word}")
             stats.total_out += 1
 
@@ -398,17 +441,108 @@ def permutate(seed, seed_score, siprefixes, prefixes, suffixes):
 seeds = []
 
 if is_test:
-    seeds = io.StringIO("""
-a
-b
-c
-d
-e
-ant
-bug
-cat
-dog
-elf
+    # representative data via
+    # % shuf -n 100 lists/seeds.txt
+    seeds = io.StringIO("""weevyou
+jyyidyao
+auhyaoz
+yosmiubr
+iblaid
+skyibsyou
+aestiu
+poicsiu
+graumo
+iahyyolp
+imyoors
+slyalyee
+tsiudyaye
+ruilfoa
+sbozau
+rayerkyi
+eeboopr
+fuezyui
+theyeraye
+floinae
+yipreaky
+vyoessoye
+eidrast
+hieloye
+chrilsou
+blyingo
+yiulsya
+uisyoent
+joistee
+thayesyoo
+kauhyle
+prevle
+aryyouny
+iacsoef
+zaeb
+smoidyue
+yanseyecs
+bluethou
+audyaex
+msoempae
+uizyyoph
+iuphayery
+oicisn
+iazyyiby
+oofyyist
+pseimpai
+kauveu
+sweyedyeu
+feusheu
+smeodoo
+syuelkie
+oagoelp
+iofaofy
+treyesyao
+scuorsae
+iudyezy
+uachriogy
+tsouxya
+aulyaun
+shyilyui
+otyeyeky
+jaudse
+bdioryyo
+ueksasc
+byyilia
+tyoursie
+oojaing
+lilphuo
+skeeksoa
+oyelseyems
+cayezh
+oagalt
+iesyoiby
+dseicyou
+opeeb
+eisbaiky
+oibleorm
+chuiboe
+csoosniu
+euchyag
+iusmeiby
+tweithe
+eagsoufy
+kaujyie
+diuprui
+heyekyyi
+oalpheix
+oamseerth
+tustya
+aipleebs
+ouquuit
+plouxa
+lyuryoo
+eyeshomy
+slyontie
+kyiajyou
+ayeskoss
+iugyeiw
+yisbucy
+osmiuby
 """).readlines()
 
 else:
@@ -419,4 +553,12 @@ else:
 for seed in [s.rstrip() for s in seeds]:
     process_seed(seed)
 
+#temp = open('lists/seed_cplx.txt', 'w')
+# looking at initial seeds
+#for line in open('lists/seeds.txt'):
+#    seed = line.strip()
+#    score = complexity_score(seed)
+#    temp.write(f"{score:02.0f} {seed}\n")
+
 print(stats)
+print(f"{csl_hits} {csl_misses}")
